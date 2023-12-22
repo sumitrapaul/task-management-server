@@ -1,21 +1,15 @@
 const express = require('express')
+const app=express()
 const cors = require('cors')
 const jwt = require("jsonwebtoken");
-const cookieParser = require("cookie-parser");
 require('dotenv').config()
-const app=express()
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port =process.env.PORT || 5000
 
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-  })
-);
+app.use(cors());
 app.use(express.json())
-app.use(cookieParser());
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.ldrxrdq.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, {
@@ -26,29 +20,7 @@ const client = new MongoClient(uri, {
   }
 });
 
-const logger = (req, res, next) => {
-  
-  next();
-};
 
-const verifyToken = (req, res, next) => {
-  const token = req?.cookies?.token;
-  // console.log("Value of token", token);
-  if (!token) {
-    return res.status(401).send({ message: "Not authorized" });
-  }
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if (err) {
-      console.log(err);
-      return res.status(401).send({ message: "Unauthorized" });
-    }
-    // console.log("value in the token of decoded", decoded);
-    req.user = decoded;
-
-    next();
-  });
-};
 
 
 async function run() {
@@ -58,27 +30,62 @@ async function run() {
    
    //database collection
    const taskCollection = client.db("taskDB").collection("tasks");
+   const userCollection = client.db("taskDB").collection("users");
 
-   app.post("/auth", logger, async (req, res) => {
+   // //auth related
+   app.post("/jwt", async (req, res) => {
     const user = req.body;
-    // console.log(user);
     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
       expiresIn: "1h",
     });
-
-    res
-      .cookie("token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite:'none'
-      })
-      .send({ success: true });
+    // console.log('tik ttok token',token)
+    res.send({ token });
   });
 
-  app.post("/logout", async (req, res) => {
+  //middlewares
+  const verifyToken = (req, res, next) => {
+    // console.log('inside',req.headers.authorization)
+    if (!req.headers.authorization) {
+      return res.status(401).send({ message: "unauthorized" });
+    }
+
+    const token = req.headers.authorization.split(" ")[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).send({ message: "unauthorized" });
+      }
+      req.decoded = decoded;
+      next();
+    });
+  };
+
+  app.get("/users", verifyToken, async (req, res) => {
+    // console.log('head',req.headers)
+    const result = await userCollection.find().toArray();
+    // console.log(result);
+    res.send(result);
+  });
+
+  //1
+  app.post("/users", async (req, res) => {
     const user = req.body;
-    
-    res.clearCookie("token", { maxAge: 0, secure:process.env.NODE_ENV === "production" ? true : false, sameSite:process.env.NODE_ENV === "production" ? "none" : "strict" }).send({ success: true });
+    const query = { email: user.email };
+    const existingUser = await userCollection.findOne(query);
+    if (existingUser) {
+      return res.send({ message: "User already exists", insertedId: null });
+    }
+    const result = await userCollection.insertOne(user);
+    res.send(result);
+  });
+
+  app.get("/users/:email", verifyToken, async (req, res) => {
+    const email = req.params.email;
+    // console.log(email);
+    const query = { email: email };
+    // console.log(query);
+    const result = await userCollection.find(query).toArray();
+    // console.log(result);
+    res.send(result);
   });
 
 
@@ -93,30 +100,17 @@ async function run() {
     res.send(result);
   });
 
-  app.get("/tasks", logger, verifyToken, async (req, res) => {
-  try{
-    const emailParam = req.query?.email;
-    const userEmail = req.user.email
-    let query={}
-    console.log(req.user, query,emailParam,userEmail)
-    //verify
-    if(emailParam && emailParam !== userEmail){
-      return res.status(403).send({message: 'forbidden'})
-    }
-    
+  app.get("/tasks1/:id", async (req, res) => {
+    const email = req.params.id;
+   console.log(email)
 
-    if(emailParam) {
-    query = { email: emailParam };
-  }else{
-    query = { email: userEmail}
-  }
-
-    const result = await taskCollection.find(query).toArray();
-    console.log(result);
+    const result1 = await taskCollection.find().sort({deadline : 1}).toArray();
+    const result = result1.filter(result2 =>(
+      result2.useremail == email
+    ))
+   console.log(result)
     res.send(result);
-  }catch(error){
-    console.error(error)
-  }
+  
   });
   app.put("/tasks/:id", async (req, res) => {
     const id = req.params.id;
@@ -124,6 +118,7 @@ async function run() {
     const options = { upsert: true };
 
     const updatedData = req.body;
+    console.log(updatedData)
     const task = {
       $set: updatedData,
     };
