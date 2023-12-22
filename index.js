@@ -59,34 +59,7 @@ async function run() {
     });
   };
 
-  app.get("/users", verifyToken, async (req, res) => {
-    // console.log('head',req.headers)
-    const result = await userCollection.find().toArray();
-    // console.log(result);
-    res.send(result);
-  });
-
-  //1
-  app.post("/users", async (req, res) => {
-    const user = req.body;
-    const query = { email: user.email };
-    const existingUser = await userCollection.findOne(query);
-    if (existingUser) {
-      return res.send({ message: "User already exists", insertedId: null });
-    }
-    const result = await userCollection.insertOne(user);
-    res.send(result);
-  });
-
-  app.get("/users/:email", verifyToken, async (req, res) => {
-    const email = req.params.email;
-    // console.log(email);
-    const query = { email: email };
-    // console.log(query);
-    const result = await userCollection.find(query).toArray();
-    // console.log(result);
-    res.send(result);
-  });
+ 
 
 
    app.post('/tasks', async(req, res) =>{
@@ -102,13 +75,13 @@ async function run() {
 
   app.get("/tasks1/:id", async (req, res) => {
     const email = req.params.id;
-   console.log(email)
+  //  console.log(email)
 
     const result1 = await taskCollection.find().sort({deadline : 1}).toArray();
     const result = result1.filter(result2 =>(
       result2.useremail == email
     ))
-   console.log(result)
+  //  console.log(result)
     res.send(result);
   
   });
@@ -118,7 +91,7 @@ async function run() {
     const options = { upsert: true };
 
     const updatedData = req.body;
-    console.log(updatedData)
+    // console.log(updatedData)
     const task = {
       $set: updatedData,
     };
